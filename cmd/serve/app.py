@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 import datetime
-from core.blockchain import Block, Blockchain, Mining
+from core import Blockchain
 
 # สร้าง Web App
 app = Flask(__name__)
@@ -59,6 +59,50 @@ def get_chain():
         "length": len(chain_data)
     }
     return jsonify(response), 200
+
+
+@app.route('/is_valid', methods=['GET'])
+def is_valid():
+    is_valid = blockchain.is_chain_valid()
+    if is_valid:
+        response = {"message": "The Blockchain is valid."}
+    else:
+        response = {"message": "The Blockchain is invalid!"}
+    return jsonify(response), 200
+
+
+@app.route('/hack_block', methods=['POST'])
+def hack_block():
+    json_data = request.get_json()
+
+    # รับข้อมูลว่าจะทำการแก้ไข block ไหน
+    target_index = json_data.get('index')
+    fake_data = json_data.get('data')
+
+    # ตรวจสอบว่ามี block ดังกล่าวหรือไม่
+    if target_index is None or target_index >= len(blockchain.chain):
+        return "Invalid block index", 400
+    
+    # เริ่มการ hack
+    # เข้าถึง block เป้าหมาย
+    target_block = blockchain.chain[target_index]
+
+    # แก้ไขข้อมูลในบล็อก
+    original_body = target_block.body
+    target_block.body = fake_data # ใส่ข้อมูลปลอม
+
+    # คำนวณ hash ใหม่หลังจากแก้ไขข้อมูล
+    target_block.current_hash = target_block.hash()
+
+    response = {
+        "message": f"HACKED edit Block {target_index} complete.",
+        "original_body": original_body,
+        "new_data": target_block.body,
+        "new_hash": target_block.current_hash
+    }
+    return jsonify(response), 200
+
+    
 
 
 @app.route('/hello', methods=['GET'])
