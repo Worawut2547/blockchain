@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+import argparse
 import datetime
 from core import Blockchain
 
@@ -6,6 +7,7 @@ from core import Blockchain
 app = Flask(__name__)
 
 blockchain = Blockchain()
+nodes =  blockchain.network
 
 @app.route('/add_data', methods=['POST'])
 def add_data():
@@ -64,20 +66,24 @@ def get_chain():
 @app.route('/is_valid', methods=['GET'])
 def is_valid():
     is_valid = blockchain.is_chain_valid()
-    if is_valid:
-        response = {"message": "The Blockchain is valid."}
+    print(f"Blockchain valid: {is_valid}")
+    if not is_valid: # ถ้า valid = False (โดนโจมตี)
+        response = {"message": "The Blockchain got attacked!"}
     else:
-        response = {"message": "The Blockchain is invalid!"}
+        response = {"message": "The Blockchain is valid."}
     return jsonify(response), 200
 
 
-@app.route('/hack_block', methods=['POST'])
-def hack_block():
+@app.route('/hack_block/<index>', methods=['PUT'])
+def hack_block(index):
+
     json_data = request.get_json()
+    if json_data is None:
+        return "Missing JSON data", 400
 
     # รับข้อมูลว่าจะทำการแก้ไข block ไหน
-    target_index = json_data.get('index')
-    fake_data = json_data.get('data')
+    target_index = int(index)
+    fake_data = json_data.get('body')
 
     # ตรวจสอบว่ามี block ดังกล่าวหรือไม่
     if target_index is None or target_index >= len(blockchain.chain):
@@ -89,7 +95,11 @@ def hack_block():
 
     # แก้ไขข้อมูลในบล็อก
     original_body = target_block.body
+    print(f"Original body: {original_body}")
+    
     target_block.body = fake_data # ใส่ข้อมูลปลอม
+    print(f"Fake body: {target_block.body}")
+
 
     # คำนวณ hash ใหม่หลังจากแก้ไขข้อมูล
     target_block.current_hash = target_block.hash()
@@ -102,7 +112,20 @@ def hack_block():
     }
     return jsonify(response), 200
 
-    
+
+@app.route('/node/register', methods=['POST'])
+def register_node():
+    origin = request.host_url.rstrip('/')
+    print(f"Origin: {origin}")
+
+    nodes.register_node(origin)
+
+    response = {
+        "message": "New nodes have been added",
+        "origin": origin,
+        "total_nodes": list(nodes.nodes)
+    }
+    return jsonify(response), 201
 
 
 @app.route('/hello', methods=['GET'])
@@ -111,4 +134,10 @@ def hello():
 
 # Run Server
 if __name__ == '__main__':
-    app.run()
+    parser = argparse.ArgumentParser()
+    # ดึงค่าจาก command line argument --port หรือ -p :<port>
+    parser.add_argument('-p', '--port', type=int, default=5000, help='Port to run the server on')
+    args = parser.parse_args()
+    port = args.port
+
+    app.run(host='0.0.0.0', port=port)

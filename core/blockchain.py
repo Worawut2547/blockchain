@@ -1,6 +1,10 @@
 import hashlib
 import json
 import datetime
+import os
+from urllib.parse import urlparse
+
+import requests
 
 class Block:
     def __init__(self, index, timestamp, body, previous_hash, nonce=0):
@@ -35,9 +39,33 @@ class Blockchain:
         self.chain = []
         self.pending_data = []
 
+        # สร้าง node อื่น ๆ ในเครือข่ายลงใน set
+        self.nodes = set()
+
+        self.network = NodeManager()
+
         # สร้าง genesis block
         self.create_genesis_block()
-    
+
+    def resolve_conflicts(self):
+        # ดึงรายชื่อ node ทั้งหมดในเครือข่าย
+        neighbours = self.network.nodes
+        print(f"Neighbours: {neighbours}")
+        new_chain = None
+
+        # ความยาวของ chain ที่เรามีอยู่
+        max_length = len(self.chain)
+
+        # วนลูปตรวจสอบ chain ของ node อื่น ๆ
+        for node in neighbours:
+            try:
+                # ยิง request ไปยัง node อื่นเพื่อดึง chain ของเขามาเปรียบเทียบ
+                response = requests.get(f"{node}/get_chain")
+            except:
+                print(f"Could not connect to node {node}")
+                continue
+
+
     def create_genesis_block(self):
         # สร้าง genesis block โดยกำหนดค่า index = 0, previous_hash = '0'
         genesis_block = Block(0, str(datetime.datetime.now()), 'Genesis Block', '0')
@@ -79,8 +107,14 @@ class Blockchain:
         while block_index < len(self.chain):
             block = self.chain[block_index]
 
-            # ตรวจสอบความถูกต้องของ hash
-            # โดย previous hash ของ block ปัจจุบัน ต้องเท่ากับ current hash ของ block ก่อนหน้า
+            # ตรวจสอบ hash ของ block ปัจจุบันว่าตรงกับ hash ที่ควรเป็นไหม
+            if block.current_hash != block.hash():
+                print(f"Block {block_index} has invalid hash.")
+                print(f"Calculated hash: {block.hash()}")
+                print(f"Stored hash: {block.current_hash}")
+                return False
+            
+            # ตรวจสอบ previous_hash ว่าตรงกับ hash ของบล็อกก่อนหน้าหรือไม่
             if block.previous_hash != previous_block.current_hash:
                 print(f"Block {block_index} has invalid previous hash.")
                 print(f"Value previous hash in block: {block.previous_hash}")
@@ -126,3 +160,28 @@ class Mining:
             else:
                 new_nonce += 1
         return new_nonce
+
+class NodeManager:
+    def __init__(self):
+        self.nodes = set()
+        self.load_nodes_from_file()
+
+    def register_node(self, address):
+        self.nodes.add(address)
+        self.save_nodes_to_file()
+
+    def save_nodes_to_file(self):
+        try:
+            with open('nodes.json', 'w') as file:
+                json.dump(list(self.nodes), file)
+        except Exception as e:
+            print(f"Error saving nodes to file: {e}")
+    
+    def load_nodes_from_file(self):
+        if os.path.exists('nodes.json'):
+            try:
+                with open('nodes.json', 'r') as file:
+                    nodes_list = json.load(file)
+                    self.nodes = set(nodes_list)
+            except Exception as e:
+                print(f"Error loading nodes from file: {e}")
