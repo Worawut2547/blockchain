@@ -44,6 +44,14 @@ def mine_block():
 
 @app.route('/get_chain', methods=['GET'])
 def get_chain():
+    # บอก blockchain ว่า คือ node ปัจจุบัน อย่าโทรมา
+    current_node = request.host_url.rstrip('/')
+    print(f"Current node: {current_node}")
+
+    # สั่ง Sync ข้อมูล กับ node อื่น ๆ ในเครือข่าย
+    replaced = blockchain.resolve_conflicts(current_node=current_node)
+
+    # เตรียมข้อมูล
     chain_data = []
     # วนลูปเเปลง object เป็น dictionary เพื่อส่งกลับเป็น JSON
     for block in blockchain.chain:
@@ -55,8 +63,13 @@ def get_chain():
             "current_hash": block.current_hash,
             "nonce": block.nonce
         })
-    
+    if replaced:
+        message = "The Blockchain was replaced by the longest valid chain from the network."
+    else:
+        message = "The Blockchain is up to date."
     response = {
+        "message": message,
+        "was_replaced": replaced,
         "chain": chain_data,
         "length": len(chain_data)
     }
@@ -67,10 +80,29 @@ def get_chain():
 def is_valid():
     is_valid = blockchain.is_chain_valid()
     print(f"Blockchain valid: {is_valid}")
-    if not is_valid: # ถ้า valid = False (โดนโจมตี)
-        response = {"message": "The Blockchain got attacked!"}
-    else:
+    if is_valid:
         response = {"message": "The Blockchain is valid."}
+    else:
+        # ถ้า valid = False (โดนโจมตี) 
+        response = {"message": "The Blockchain got attacked!"}
+        # เริ่มกระบวนการ consensus
+        replaced = blockchain.resolve_conflicts()
+
+        if replaced:
+            # กู้คืนสำเร็จ
+            print(f"Blockchain was edited. Replaced with the valid chain from network...")
+            response = {
+                "message": "The Blockchain has been restored through consensus.",
+                "status": "replaced"
+            }
+        else:
+            # กู้คืนไม่สำเร็จ
+            print(f"Blockchain could not be restored. No valid chain found in network.")
+            response = {
+                "message": "The Blockchain could not be restored. No valid chain found in network.",
+                "status": "Corrupted"
+            }
+            
     return jsonify(response), 200
 
 
@@ -127,6 +159,18 @@ def register_node():
     }
     return jsonify(response), 201
 
+
+# endpoint สำหรับให้ node อื่น ดึงข้อมูลไปตรวจสอบ
+@app.route('/raw_chain', methods=['GET'])
+def raw_chain():
+    # ส่งข้อมูลกลับไป ไม่ต้อง sync
+    chain_data = [block.to_dict() for block in blockchain.chain]
+
+    response = {
+        "chain": chain_data,
+        "length": len(chain_data)
+    }
+    return jsonify(response), 200
 
 @app.route('/hello', methods=['GET'])
 def hello():

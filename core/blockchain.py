@@ -32,6 +32,16 @@ class Block:
         # เข้ารหัสด้วย sha256
         return hashlib.sha256(encode_block).hexdigest()
     
+    # แปลง Block เป็น dictionary
+    def to_dict(self):
+        return {
+            'index': self.index,
+            'timestamp': self.timestamp,
+            'body': self.body,
+            'previous_hash': self.previous_hash,
+            'nonce': self.nonce,
+            'current_hash': self.current_hash
+        }
 class Blockchain:
     def __init__(self):
         # เก็บกลุ่มของ Blockchain
@@ -47,7 +57,9 @@ class Blockchain:
         # สร้าง genesis block
         self.create_genesis_block()
 
-    def resolve_conflicts(self):
+    def resolve_conflicts(self, current_node=None):
+        # อ่านไฟล์ล่าสุดก่อน
+        self.network.load_nodes_from_file()
         # ดึงรายชื่อ node ทั้งหมดในเครือข่าย
         neighbours = self.network.nodes
         print(f"Neighbours: {neighbours}")
@@ -58,12 +70,82 @@ class Blockchain:
 
         # วนลูปตรวจสอบ chain ของ node อื่น ๆ
         for node in neighbours:
+            # ข้าม node ตัวเอง
+            if current_node is not None and node in current_node:
+                print(f"Skipping current node: {node}")
+                continue
             try:
                 # ยิง request ไปยัง node อื่นเพื่อดึง chain ของเขามาเปรียบเทียบ
-                response = requests.get(f"{node}/get_chain")
+                response = requests.get(f"{node}/raw_chain")
+
+                if response.status_code == 200:
+                    length = response.json()['length']
+                    chain = response.json()['chain']
+
+                    # longest chain rule
+                    if length > max_length and self.is_chain_valid_json_chain(chain):
+                        max_length = length
+                        new_chain = chain
             except:
                 print(f"Could not connect to node {node}")
                 continue
+
+            if new_chain:
+                self.chain = self.convert_json_to_chain(new_chain)
+                self.pending_data = []
+                return True
+        return False
+
+
+    def convert_json_to_chain(self, chain):
+        object_chain = []
+        for block_data in chain:
+            block = Block(
+                block_data['index'],
+                block_data['timestamp'],
+                block_data['body'],
+                block_data['previous_hash'],
+                block_data['nonce']
+            )
+            block.current_hash = block_data['current_hash']
+            object_chain.append(block)
+        return object_chain
+
+    def is_chain_valid_json_chain(self, chain):
+        # เช็คความถูกต้องของ chain ที่รับมา
+        # แปลง json chain เป็น object ของ Block
+        temp_chain = self.convert_json_to_chain(chain)
+        return self.check_chain_validity(temp_chain)
+    
+    def check_chain_validity(self, chain):
+        previous_block = chain[0]
+        block_index = 1
+
+        while block_index < len(chain):
+            block = chain[block_index]
+
+            # ตรวจสอบ hash ของ block ปัจจุบันว่าตรงกับ hash ที่ควรเป็นไหม
+            if block.current_hash != block.hash():
+                return False
+            
+            # ตรวจสอบ previous_hash ว่าตรงกับ hash ของบล็อกก่อนหน้าหรือไม่
+            if block.previous_hash != previous_block.current_hash:
+                return False
+
+            # ตรวจสอบ proof of work (เเก้สมการถูกไหม)
+            previous_nonce = previous_block.nonce
+            nonce = block.nonce
+
+            equation_nonce = str((nonce**2) - (previous_nonce**2))
+            hash_operation = hashlib.sha256(equation_nonce.encode()).hexdigest()
+
+            if hash_operation[:4] != '0000':
+                return False
+            
+            # ขยับไปคู่ถัดไป
+            previous_block = block
+            block_index += 1
+        return True
 
 
     def create_genesis_block(self):
@@ -167,7 +249,13 @@ class NodeManager:
         self.load_nodes_from_file()
 
     def register_node(self, address):
+        # โหลดข้อมูลก่อนเพิ่ม node ใหม่
+        self.load_nodes_from_file()
+
+        # เพิ่ม node ใหม่ลงใน set
         self.nodes.add(address)
+
+        # บันทึกข้อมูล node ลงไฟล์
         self.save_nodes_to_file()
 
     def save_nodes_to_file(self):
