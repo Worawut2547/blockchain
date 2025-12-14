@@ -24,22 +24,39 @@ def add_data():
 
 @app.route('/mine_block', methods=['GET'])
 def mine_block():
-    # เอาข้อมูลทั้งหมดที่รออยู่ (pending_data) มาเป็น body ของบล็อกใหม่
-    body_data = list(blockchain.pending_data)
+    # check & Self-healing
+    replaced = blockchain.resolve_conflicts(current_node=request.host_url.rstrip('/'))
 
-    # สร้าง block
-    new_block = blockchain.create_block(body_data)
-    # ล้างข้อมูล pending_data หลังจากบันทึกลงบล็อกแล้ว
-    blockchain.pending_data = []
-
-    response = {
-        "message": "New Block Mined",
-        "index": new_block.index,
-        "body": new_block.body,
-        "timestamp": new_block.timestamp,
-    }
+    if not blockchain.is_chain_valid():
+        return jsonify({"message": "Blockchain is invalid. Cannot mine new block."}), 400
     
-    return jsonify(response), 200
+    # ตรวจสอบว่ามีการ hack รออยู่หรือไม่
+    if blockchain.pending_hack:
+        hack_result = blockchain.execute_pending_hack()
+
+        return jsonify({
+            "message": "Block hacked and mined successfully.",
+            "detail": hack_result
+        }), 200
+    else:
+         # เอาข้อมูลทั้งหมดที่รออยู่ (pending_data) มาเป็น body ของบล็อกใหม่
+        body_data = list(blockchain.pending_data)
+    
+        # เอาข้อมูลทั้งหมดที่รออยู่ (pending_data) มาเป็น body ของบล็อกใหม่
+        body_data = list(blockchain.pending_data)
+        # สร้าง block
+        new_block = blockchain.create_block(body_data)
+        # ล้างข้อมูล pending_data หลังจากบันทึกลงบล็อกแล้ว
+        blockchain.pending_data = []
+
+        response = {
+            "message": "New Block Mined",
+            "index": new_block.index,
+            "body": new_block.body,
+            "timestamp": new_block.timestamp,
+        }
+    
+        return jsonify(response), 200
     
 
 @app.route('/get_chain', methods=['GET'])
@@ -106,9 +123,8 @@ def is_valid():
     return jsonify(response), 200
 
 
-@app.route('/hack_block/<index>', methods=['PUT'])
+@app.route('/hack_block/<index>', methods=['POST'])
 def hack_block(index):
-
     json_data = request.get_json()
     if json_data is None:
         return "Missing JSON data", 400
@@ -120,7 +136,12 @@ def hack_block(index):
     # ตรวจสอบว่ามี block ดังกล่าวหรือไม่
     if target_index is None or target_index >= len(blockchain.chain):
         return "Invalid block index", 400
-    
+    # เก็บใน pending_hack ก่อน
+    blockchain.pending_hack = {
+        "target_index": target_index,
+        "fake_data": fake_data
+    }
+    '''
     # เริ่มการ hack
     # เข้าถึง block เป้าหมาย
     target_block = blockchain.chain[target_index]
@@ -135,12 +156,13 @@ def hack_block(index):
 
     # คำนวณ hash ใหม่หลังจากแก้ไขข้อมูล
     target_block.current_hash = target_block.hash()
-
+    '''
     response = {
         "message": f"HACKED edit Block {target_index} complete.",
-        "original_body": original_body,
-        "new_data": target_block.body,
-        "new_hash": target_block.current_hash
+        "next_step": "Please call /mine_block to execute the attack."
+        #"original_body": original_body,
+        #"new_data": target_block.body,
+        #"new_hash": target_block.current_hash
     }
     return jsonify(response), 200
 

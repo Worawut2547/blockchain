@@ -42,12 +42,16 @@ class Block:
             'nonce': self.nonce,
             'current_hash': self.current_hash
         }
+    
 class Blockchain:
     def __init__(self):
         # เก็บกลุ่มของ Blockchain
         # list ที่เก็บ Blockchain
         self.chain = []
         self.pending_data = []
+
+        # เก็บการ hack ที่รอ mining
+        self.pending_hack = None
 
         # สร้าง node อื่น ๆ ในเครือข่ายลงใน set
         self.nodes = set()
@@ -56,6 +60,42 @@ class Blockchain:
 
         # สร้าง genesis block
         self.create_genesis_block()
+
+    def execute_pending_hack(self):
+        if not self.pending_hack:
+            return None
+        target_index = self.pending_hack['target_index']
+        fake_data = self.pending_hack['fake_data']
+
+        # เข้าถึง block เป้าหมาย
+        target_block = self.chain[target_index]
+        previous_block = self.chain[target_index - 1]
+
+        # แก้ไขข้อมูลในบล็อก
+        original_body = target_block.body
+        print(f"Original body: {original_body}")
+        target_block.body = fake_data # ใส่ข้อมูลปลอม
+        print(f"Fake body: {target_block.body}")
+
+        # Re-mine (ชุดใหม่เพื่อให้ hash ถูกต้อง)
+        print(f"Re-mining Block {target_index}...")
+        new_nonce = Mining.proof_of_work(previous_block.nonce)
+
+        # อัพเดท nonce และ hash ใหม่
+        target_block.nonce = new_nonce
+        target_block.current_hash = target_block.hash()
+
+        # ล้าง pending_hack หลังจากทำเสร็จ
+        self.pending_hack = None
+
+        return {
+            "index": target_index,
+            "original_body": original_body,
+            "new_body": target_block.body,
+            "new_nonce": new_nonce,
+            "new_hash": target_block.current_hash
+        }
+
 
     def resolve_conflicts(self, current_node=None):
         # อ่านไฟล์ล่าสุดก่อน
@@ -67,6 +107,9 @@ class Blockchain:
 
         # ความยาวของ chain ที่เรามีอยู่
         max_length = len(self.chain)
+
+        # เช็คความถูกต้องของ node ตัวเอง
+        am_i_corrupted = not self.is_chain_valid()
 
         # วนลูปตรวจสอบ chain ของ node อื่น ๆ
         for node in neighbours:
@@ -82,10 +125,13 @@ class Blockchain:
                     length = response.json()['length']
                     chain = response.json()['chain']
 
-                    # longest chain rule
-                    if length > max_length and self.is_chain_valid_json_chain(chain):
+                    is_longer = length > max_length
+                    is_healing = am_i_corrupted and length == len(self.chain)
+
+                    if (is_longer or is_healing) and self.is_chain_valid_json_chain(chain):
                         max_length = length
                         new_chain = chain
+
             except:
                 print(f"Could not connect to node {node}")
                 continue
@@ -93,6 +139,7 @@ class Blockchain:
             if new_chain:
                 self.chain = self.convert_json_to_chain(new_chain)
                 self.pending_data = []
+                print("Chain replaced/repaired")
                 return True
         return False
 
