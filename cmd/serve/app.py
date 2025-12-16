@@ -63,7 +63,6 @@ def mine_block():
 def get_chain():
     # บอก blockchain ว่า คือ node ปัจจุบัน อย่าโทรมา
     current_node = request.host_url.rstrip('/')
-    print(f"Current node: {current_node}")
 
     # สั่ง Sync ข้อมูล กับ node อื่น ๆ ในเครือข่าย
     replaced = blockchain.resolve_conflicts(current_node=current_node)
@@ -141,28 +140,10 @@ def hack_block(index):
         "target_index": target_index,
         "fake_data": fake_data
     }
-    '''
-    # เริ่มการ hack
-    # เข้าถึง block เป้าหมาย
-    target_block = blockchain.chain[target_index]
 
-    # แก้ไขข้อมูลในบล็อก
-    original_body = target_block.body
-    print(f"Original body: {original_body}")
-    
-    target_block.body = fake_data # ใส่ข้อมูลปลอม
-    print(f"Fake body: {target_block.body}")
-
-
-    # คำนวณ hash ใหม่หลังจากแก้ไขข้อมูล
-    target_block.current_hash = target_block.hash()
-    '''
     response = {
         "message": f"HACKED edit Block {target_index} complete.",
         "next_step": "Please call /mine_block to execute the attack."
-        #"original_body": original_body,
-        #"new_data": target_block.body,
-        #"new_hash": target_block.current_hash
     }
     return jsonify(response), 200
 

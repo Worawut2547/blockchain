@@ -96,8 +96,10 @@ class Blockchain:
             "new_hash": target_block.current_hash
         }
 
-
     def resolve_conflicts(self, current_node=None):
+        print("-----------------------------------------------------")
+        print("Resolving conflicts...")
+        print(f"Current node: {current_node}")
         # อ่านไฟล์ล่าสุดก่อน
         self.network.load_nodes_from_file()
         # ดึงรายชื่อ node ทั้งหมดในเครือข่าย
@@ -110,6 +112,7 @@ class Blockchain:
 
         # เช็คความถูกต้องของ node ตัวเอง
         am_i_corrupted = not self.is_chain_valid()
+        print(f"Am I corrupted? {am_i_corrupted}")
 
         # วนลูปตรวจสอบ chain ของ node อื่น ๆ
         for node in neighbours:
@@ -139,10 +142,9 @@ class Blockchain:
             if new_chain:
                 self.chain = self.convert_json_to_chain(new_chain)
                 self.pending_data = []
-                print("Chain replaced/repaired")
+                print("Blockchain was replaced by the longest valid chain from the network.")
                 return True
         return False
-
 
     def convert_json_to_chain(self, chain):
         object_chain = []
@@ -194,7 +196,6 @@ class Blockchain:
             block_index += 1
         return True
 
-
     def create_genesis_block(self):
         # สร้าง genesis block โดยกำหนดค่า index = 0, previous_hash = '0'
         genesis_block = Block(0, str(datetime.datetime.now()), 'Genesis Block', '0')
@@ -213,6 +214,7 @@ class Blockchain:
 
         # เริ่มกระบวนการขุด (Mining) เพื่อหา nonce ใหม่
         print("Mining new block...")
+        print("-----------------------------------------------------")
         nonce = Mining.proof_of_work(previous_nonce)
         print(f"New nonce found: {nonce}")
 
@@ -227,9 +229,12 @@ class Blockchain:
 
         # เพิ่ม block ใหม่ลงใน chain
         self.chain.append(new_block)
+        print(f"Block {new_index} has been added to the blockchain.")
         return new_block
     
     def is_chain_valid(self):
+        print("-----------------------------------------------------")
+        print("Validating blockchain...")
         previous_block = self.chain[0]
         block_index = 1
 
@@ -248,6 +253,7 @@ class Blockchain:
                 print(f"Block {block_index} has invalid previous hash.")
                 print(f"Value previous hash in block: {block.previous_hash}")
                 print(f"Value current hash in previous block: {previous_block.current_hash}")
+                print(f"Origin body: {block.body} edited to\n {previous_block.body}")
                 return False
 
             # ตรวจสอบ proof of work (เเก้สมการถูกไหม)
